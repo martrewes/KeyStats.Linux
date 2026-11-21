@@ -1,12 +1,12 @@
-import QtQuick
 import QtCore
+import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.plasmoid
-import org.kde.plasma.core as PlasmaCore
 
 PlasmoidItem {
     id: root
@@ -42,18 +42,16 @@ PlasmoidItem {
     readonly property string stateDbPath: StandardPaths.writableLocation(StandardPaths.GenericStateLocation).toString().replace(/^file:\/\//, "") + "/keystats/stats.sqlite3"
     readonly property string clickBreakdownCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT left_clicks, right_clicks, middle_clicks FROM daily_stats WHERE date = date(\x27now\x27, \x27localtime\x27) LIMIT 1;\""
     readonly property string keysCmd: "sh -c \"" + ctlBin + " keys --limit 15\""
-
     readonly property string historyCmd: {
-        var expr = "key_presses"
-        if (historyMode === "clicks") {
-            expr = "(left_clicks + right_clicks + middle_clicks + side_back_clicks + side_forward_clicks)"
-        } else if (historyMode === "distance") {
-            expr = "CAST(ROUND(mouse_distance) AS INTEGER)"
-        } else if (historyMode === "scroll") {
-            expr = "CAST(ROUND(scroll_distance) AS INTEGER)"
-        }
-        var offset = "-" + (historyDays - 1) + " days"
-        return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT strftime(\x27%m-%d\x27, date), " + expr + " FROM daily_stats WHERE date >= date(\x27now\x27, \x27localtime\x27, \x27" + offset + "\x27) ORDER BY date ASC;\""
+        var expr = "key_presses";
+        if (historyMode === "clicks")
+            expr = "(left_clicks + right_clicks + middle_clicks + side_back_clicks + side_forward_clicks)";
+        else if (historyMode === "distance")
+            expr = "CAST(ROUND(mouse_distance) AS INTEGER)";
+        else if (historyMode === "scroll")
+            expr = "CAST(ROUND(scroll_distance) AS INTEGER)";
+        var offset = "-" + (historyDays - 1) + " days";
+        return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT strftime(\x27%m-%d\x27, date), " + expr + " FROM daily_stats WHERE date >= date(\x27now\x27, \x27localtime\x27, \x27" + offset + "\x27) ORDER BY date ASC;\"";
     }
 
     function formatNumber(n) {
@@ -186,37 +184,34 @@ PlasmoidItem {
 
     function parseHistory(output) {
         var lines = output.split("
-")
-        var counts = []
-        var labels = []
-        var isDistMode = (root.historyMode === "distance" || root.historyMode === "scroll")
-
-        var byDate = {}
+");
+        var counts = [];
+        var labels = [];
+        var isDistMode = (root.historyMode === "distance" || root.historyMode === "scroll");
+        var byDate = {
+        };
         for (var i = 0; i < lines.length; i++) {
-            var p = lines[i].trim().split("|")
-            if (p.length === 2) {
-                byDate[p[0]] = parseInt(p[1], 10) || 0
-            }
-        }
+            var p = lines[i].trim().split("|");
+            if (p.length === 2)
+                byDate[p[0]] = parseInt(p[1], 10) || 0;
 
-        var now = new Date()
+        }
+        var now = new Date();
         for (var d = root.historyDays - 1; d >= 0; d--) {
-            var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d)
-            var mm = String(dt.getMonth() + 1).padStart(2, "0")
-            var dd = String(dt.getDate()).padStart(2, "0")
-            var key = mm + "-" + dd
-            labels.push(key)
-            counts.push(byDate[key] || 0)
+            var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+            var mm = String(dt.getMonth() + 1).padStart(2, "0");
+            var dd = String(dt.getDate()).padStart(2, "0");
+            var key = mm + "-" + dd;
+            labels.push(key);
+            counts.push(byDate[key] || 0);
         }
-
         if (counts.length > 0) {
-            labels[labels.length - 1] = "Today"
-            root.dayLabels = labels
-            root.historyData = counts
-
-            var sum = 0
+            labels[labels.length - 1] = "Today";
+            root.dayLabels = labels;
+            root.historyData = counts;
+            var sum = 0;
             for (var s = 0; s < counts.length; s++) sum += (counts[s] || 0)
-            root.historyTotalText = isDistMode ? formatDistance(sum) : formatNumber(sum)
+            root.historyTotalText = isDistMode ? formatDistance(sum) : formatNumber(sum);
         }
     }
 
@@ -227,10 +222,10 @@ PlasmoidItem {
             var m = lines[i].match(/^(\S+)\s+.*?([\d.]+[KkMm]?)\s*$/);
             if (m && m[1] !== "Key")
                 items.push({
-                    "keyName": shortKeyLabel(m[1]),
-                    "fullName": m[1],
-                    "count": m[2]
-                });
+                "keyName": shortKeyLabel(m[1]),
+                "fullName": m[1],
+                "count": m[2]
+            });
 
             if (items.length >= 15)
                 break;
@@ -253,14 +248,17 @@ PlasmoidItem {
             refreshAll();
 
     }
+    Plasmoid.status: PlasmaCore.Types.ActiveStatus
+    toolTipMainText: "KeyStats"
+    toolTipSubText: root.daemonConnected ? ("Keys: " + root.keyPresses + "  |  Clicks: " + root.totalClicks + "\nDistance: " + root.mouseDistance + "  |  Scroll: " + root.scrollDistance) : "Daemon disconnected"
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
             text: "Keyboard Heatmap..."
             icon.name: "input-keyboard"
             onTriggered: {
-                heatmapWin.show()
-                heatmapWin.raise()
-                heatmapWin.requestActivate()
+                heatmapWin.show();
+                heatmapWin.raise();
+                heatmapWin.requestActivate();
             }
         }
     ]
@@ -268,10 +266,6 @@ PlasmoidItem {
     HeatmapWindow {
         id: heatmapWin
     }
-
-    Plasmoid.status: PlasmaCore.Types.ActiveStatus
-    toolTipMainText: "KeyStats"
-    toolTipSubText: root.daemonConnected ? ("Keys: " + root.keyPresses + "  |  Clicks: " + root.totalClicks + "\nDistance: " + root.mouseDistance + "  |  Scroll: " + root.scrollDistance) : "Daemon disconnected"
 
     Plasma5Support.DataSource {
         id: execSource
@@ -613,13 +607,13 @@ PlasmoidItem {
                             spacing: 1
 
                             PlasmaComponents.Label {
-                                text: root.middleClicks !== "0" ? ("Right (" + root.middleClicks + " mid)") : "Right Clicks"
+                                text: root.middleClicks !== "0" ? ("Right Clicks / Middle Clicks") : "Right Clicks"
                                 font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
                                 opacity: 0.7
                             }
 
                             PlasmaComponents.Label {
-                                text: root.rightClicks
+                                text: root.middleClicks !== "0" ? (root.rightClicks + " / " + root.middleClicks) : root.rightClicks
                                 font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
                                 font.bold: true
                             }
@@ -917,6 +911,8 @@ PlasmoidItem {
                 border.width: 1
 
                 ColumnLayout {
+                    // Sparse X-axis date ticks (avoids crowding in 30D view)
+
                     id: chartCol
 
                     anchors.fill: parent
@@ -991,6 +987,26 @@ PlasmoidItem {
                         property int activeIdx: historyBox.hoveredIndex
                         property string styleMode: root.chartStyle
 
+                        function traceSmoothLine(ctx, pts, minY, maxY, tension) {
+                            var t = (tension !== undefined) ? tension : 0.22;
+                            ctx.moveTo(pts.x, pts.y);
+                            for (var i = 0; i < pts.length - 1; i++) {
+                                var p0 = (i > 0) ? pts[i - 1] : pts;
+                                var p1 = pts[i];
+                                var p2 = pts[i + 1];
+                                var p3 = (i + 2 < pts.length) ? pts[i + 2] : p2;
+                                var cp1x = p1.x + (p2.x - p0.x) * t;
+                                var cp1y = p1.y + (p2.y - p0.y) * t;
+                                var cp2x = p2.x - (p3.x - p1.x) * t;
+                                var cp2y = p2.y - (p3.y - p1.y) * t;
+                                // Clamp Y so curves never dip below 0 or overshoot the top gridline
+                                cp1y = Math.max(minY, Math.min(maxY, cp1y));
+                                cp2y = Math.max(minY, Math.min(maxY, cp2y));
+                                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+                            }
+                        }
+
+                        antialiasing: true
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         onPointsDataChanged: requestPaint()
@@ -1052,25 +1068,24 @@ PlasmoidItem {
                                 var grad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
                                 grad.addColorStop(0, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.28));
                                 grad.addColorStop(1, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0));
+                                // 1. Gradient Fill under the smooth curve
                                 ctx.beginPath();
-                                ctx.moveTo(pts[0].x, padTop + plotH);
-                                for (var j = 0; j < n; j++) {
-                                    ctx.lineTo(pts[j].x, pts[j].y);
-                                }
+                                ctx.moveTo(pts.x, padTop + plotH);
+                                ctx.lineTo(pts.x, pts.y);
+                                traceSmoothLine(ctx, pts, padTop, padTop + plotH, 0.22);
                                 ctx.lineTo(pts[n - 1].x, padTop + plotH);
                                 ctx.closePath();
                                 ctx.fillStyle = grad;
                                 ctx.fill();
+                                // 2. Smooth Line Stroke
                                 ctx.beginPath();
-                                ctx.moveTo(pts[0].x, pts[0].y);
-                                for (var k = 1; k < n; k++) {
-                                    ctx.lineTo(pts[k].x, pts[k].y);
-                                }
+                                traceSmoothLine(ctx, pts, padTop, padTop + plotH, 0.22);
                                 ctx.strokeStyle = Kirigami.Theme.highlightColor;
                                 ctx.lineWidth = 2;
                                 ctx.lineJoin = "round";
                                 ctx.lineCap = "round";
                                 ctx.stroke();
+                                // 3. Hover Guideline
                                 if (historyBox.hoveredIndex >= 0 && historyBox.hoveredIndex < n) {
                                     var hx = pts[historyBox.hoveredIndex].x;
                                     ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.28);
@@ -1080,6 +1095,7 @@ PlasmoidItem {
                                     ctx.lineTo(hx, padTop + plotH);
                                     ctx.stroke();
                                 }
+                                // 4. Data Point Dots
                                 for (var d = 0; d < n; d++) {
                                     var isToday = (d === n - 1);
                                     var isHovered = (d === historyBox.hoveredIndex);
@@ -1099,7 +1115,6 @@ PlasmoidItem {
                             }
                         }
                     }
-                    // Sparse X-axis date ticks (avoids crowding in 30D view)
 
                     Item {
                         Layout.fillWidth: true
