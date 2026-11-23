@@ -37,7 +37,7 @@ Window {
     property string scrollDistText: "0 m"
     property string distanceUnit: "metric"
     property string hoveredSummary: "Hover over any keycap to inspect exact counts and combos"
-    readonly property string stateDbPath: StandardPaths.writableLocation(StandardPaths.GenericStateLocation).toString().replace(/^file:\/\//, "") + "/keystats/stats.sqlite3"
+    readonly property string stateDbPath: "$HOME/.local/state/keystats/stats.sqlite3"
     readonly property string datesCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT DISTINCT date FROM key_counts ORDER BY date ASC;\""
     readonly property string countsCmd: {
         if (rangeMode === "7d")

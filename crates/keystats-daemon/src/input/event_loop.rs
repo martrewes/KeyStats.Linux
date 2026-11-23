@@ -454,7 +454,8 @@ fn process_device(
                                     tp_state.moved = true;
                                 }
                                 if tp_state.finger_count >= 2 {
-                                    stats.add_scroll_distance(scaled_dx.abs() * 0.25);
+                                    // Use already-scaled touchpad units for multi-touch scrolling.
+                                    stats.add_scroll_distance(scaled_dx.abs());
                                 } else {
                                     pending_dx += scaled_dx;
                                 }
@@ -478,7 +479,8 @@ fn process_device(
                                     tp_state.moved = true;
                                 }
                                 if tp_state.finger_count >= 2 {
-                                    stats.add_scroll_distance(scaled_dy.abs() * 0.25);
+                                    // Use already-scaled touchpad units for multi-touch scrolling.
+                                    stats.add_scroll_distance(scaled_dy.abs());
                                 } else {
                                     pending_dy += scaled_dy;
                                 }

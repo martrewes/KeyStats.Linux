@@ -47,7 +47,7 @@ PlasmoidItem {
     readonly property string ctlBin: (root.customCtlPath !== "" && root.customCtlPath !== "keystatsctl") ? root.customCtlPath : "$(command -v keystatsctl || echo /usr/local/bin/keystatsctl)"
     readonly property string dbPath: "$HOME/.local/state/keystats/stats.sqlite3"
     readonly property string statusCmd: "sh -c \"" + ctlBin + " status\""
-    readonly property string stateDbPath: StandardPaths.writableLocation(StandardPaths.GenericStateLocation).toString().replace(/^file:\/\//, "") + "/keystats/stats.sqlite3"
+    readonly property string stateDbPath: "$HOME/.local/state/keystats/stats.sqlite3"
     readonly property string clickBreakdownCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT left_clicks, right_clicks, middle_clicks FROM daily_stats WHERE date = date(\x27now\x27, \x27localtime\x27) LIMIT 1;\""
     readonly property string keysCmd: "sh -c \"" + ctlBin + " keys --limit 15\""
     readonly property string historyCmd: {
