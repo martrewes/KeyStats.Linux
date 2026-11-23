@@ -24,6 +24,9 @@ PlasmoidItem {
     property string scrollDistance: "0 px"
     property string wpmText: "0"
     property string wpmPeak: "0"
+    property int lastActiveKps: 0
+    property int lastActiveWpm: 0
+    property double lastActiveKeyMs: 0
     property string kpsText: "0"
     property string kpsPeak: "0"
     property string cpsText: "0"
@@ -174,9 +177,20 @@ PlasmoidItem {
             root.scrollDistance = formatDistance(parseFloat(scrollMatch[1]));
 
         if (kpsMatch) {
-            root.kpsText = kpsMatch[1];
+            var liveKps = parseInt(kpsMatch[1], 10) || 0;
+            var liveWpm = Math.round(liveKps * 12);
+            var nowMs = Date.now();
+            if (liveKps > 0) {
+                root.lastActiveKps = liveKps;
+                root.lastActiveWpm = liveWpm;
+                root.lastActiveKeyMs = nowMs;
+            } else if (nowMs - root.lastActiveKeyMs <= 5000) {
+                liveKps = root.lastActiveKps;
+                liveWpm = root.lastActiveWpm;
+            }
+            root.kpsText = String(liveKps);
             root.kpsPeak = kpsMatch[2];
-            root.wpmText = String(Math.round((parseFloat(kpsMatch[1]) || 0) * 12));
+            root.wpmText = String(liveWpm);
             root.wpmPeak = String(Math.round((parseFloat(kpsMatch[2]) || 0) * 12));
         }
         if (cpsMatch) {
