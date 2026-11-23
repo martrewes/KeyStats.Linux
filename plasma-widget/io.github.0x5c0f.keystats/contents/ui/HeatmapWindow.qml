@@ -29,22 +29,38 @@ Window {
     property int totalKeys: 0
     property int activeKeys: 0
     property int maxKeyCount: 1
+    property int leftClicks: 0
+    property int middleClicks: 0
+    property int rightClicks: 0
+    property int sideClicks: 0
+    property string mouseDistText: "0 m"
+    property string scrollDistText: "0 m"
+    property string distanceUnit: "metric"
     property string hoveredSummary: "Hover over any keycap to inspect exact counts and combos"
     readonly property string stateDbPath: StandardPaths.writableLocation(StandardPaths.GenericStateLocation).toString().replace(/^file:\/\//, "") + "/keystats/stats.sqlite3"
     readonly property string datesCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT DISTINCT date FROM key_counts ORDER BY date ASC;\""
     readonly property string countsCmd: {
         if (rangeMode === "7d")
             return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts WHERE date >= date('now', 'localtime', '-6 days') GROUP BY key_name;\"";
-
         if (rangeMode === "30d")
             return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts WHERE date >= date('now', 'localtime', '-29 days') GROUP BY key_name;\"";
-
         if (rangeMode === "all")
             return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts GROUP BY key_name;\"";
-
         var d = selectedDate !== "" ? selectedDate : "now";
         var whereClause = (d === "now") ? "date = date('now', 'localtime')" : ("date = '" + d + "'");
         return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts WHERE " + whereClause + " GROUP BY key_name;\"";
+    }
+    readonly property string mouseCmd: {
+        var cols = "COALESCE(SUM(left_clicks),0), COALESCE(SUM(middle_clicks),0), COALESCE(SUM(right_clicks),0), COALESCE(SUM(side_back_clicks + side_forward_clicks),0), COALESCE(ROUND(SUM(mouse_distance)),0), COALESCE(ROUND(SUM(scroll_distance)),0)";
+        if (rangeMode === "7d")
+            return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT " + cols + " FROM daily_stats WHERE date >= date('now', 'localtime', '-6 days');\"";
+        if (rangeMode === "30d")
+            return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT " + cols + " FROM daily_stats WHERE date >= date('now', 'localtime', '-29 days');\"";
+        if (rangeMode === "all")
+            return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT " + cols + " FROM daily_stats;\"";
+        var d = selectedDate !== "" ? selectedDate : "now";
+        var whereClause = (d === "now") ? "date = date('now', 'localtime')" : ("date = '" + d + "'");
+        return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT " + cols + " FROM daily_stats WHERE " + whereClause + ";\"";
     }
     readonly property bool isIsoLayout: layoutMode !== "ansi_us"
     readonly property var keyboardRows: {
@@ -1360,7 +1376,7 @@ Window {
                 win.dateIndex = list.indexOf(win.selectedDate);
             }
         }
-        dbSource.connectSource(win.countsCmd);
+        win.refreshData();
     }
 
     function parseCounts(output) {
@@ -1409,15 +1425,58 @@ Window {
         win.maxKeyCount = maxC;
     }
 
+    function formatDist(px) {
+        if (isNaN(px) || px <= 0)
+            return distanceUnit === "pixels" ? "0 px" : (distanceUnit === "imperial" ? "0 ft" : "0 m");
+        if (distanceUnit === "pixels")
+            return formatNumber(px) + " px";
+        var pxPerMeter = (Screen.pixelDensity > 0) ? (Screen.pixelDensity * 1000) : 3780;
+        var meters = px / pxPerMeter;
+        if (distanceUnit === "imperial") {
+            var feet = meters * 3.28084;
+            if (feet >= 5280)
+                return (feet / 5280).toFixed(2) + " mi";
+            return Math.round(feet) + " ft";
+        }
+        if (meters >= 1000)
+            return (meters / 1000).toFixed(2) + " km";
+        if (meters >= 1)
+            return meters.toFixed(1) + " m";
+        return formatNumber(px) + " px";
+    }
+
+    function parseMouse(output) {
+        var parts = output.trim().split("|");
+        if (parts.length < 6)
+            return;
+        win.leftClicks = parseInt(parts[0], 10) || 0;
+        win.middleClicks = parseInt(parts[1], 10) || 0;
+        win.rightClicks = parseInt(parts[2], 10) || 0;
+        win.sideClicks = parseInt(parts[3], 10) || 0;
+        win.mouseDistText = formatDist(parseFloat(parts[4]) || 0);
+        win.scrollDistText = formatDist(parseFloat(parts[5]) || 0);
+    }
+
+    function refreshData() {
+        var cCmd = win.countsCmd;
+        var mCmd = win.mouseCmd;
+        dbSource.disconnectSource(cCmd);
+        dbSource.disconnectSource(mCmd);
+        dbSource.connectSource(cCmd);
+        dbSource.connectSource(mCmd);
+    }
+
     function reload() {
+        dbSource.disconnectSource(datesCmd);
         dbSource.connectSource(datesCmd);
+        win.refreshData();
     }
 
     title: "KeyStats — Keyboard Heatmap"
     width: 960
-    height: 495
+    height: 535
     minimumWidth: 820
-    minimumHeight: 450
+    minimumHeight: 485
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
     color: Kirigami.Theme.backgroundColor
@@ -1427,6 +1486,64 @@ Window {
 
     }
 
+    Timer {
+        id: liveRefreshTimer
+        interval: 3000
+        running: win.visible
+        repeat: true
+        onTriggered: win.refreshData()
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Cancel, "Escape"]
+        enabled: win.visible
+        onActivated: win.close()
+    }
+
+    Shortcut {
+        sequence: "Left"
+        enabled: win.visible && win.rangeMode === "day" && win.dateIndex > 0
+        onActivated: {
+            win.dateIndex -= 1;
+            win.selectedDate = win.availableDates[win.dateIndex];
+            win.refreshData();
+        }
+    }
+
+    Shortcut {
+        sequence: "Right"
+        enabled: win.visible && win.rangeMode === "day" && win.dateIndex < win.availableDates.length - 1
+        onActivated: {
+            win.dateIndex += 1;
+            win.selectedDate = win.availableDates[win.dateIndex];
+            win.refreshData();
+        }
+    }
+
+    Shortcut {
+        sequence: "1"
+        enabled: win.visible
+        onActivated: { win.rangeMode = "day"; win.refreshData(); }
+    }
+
+    Shortcut {
+        sequence: "2"
+        enabled: win.visible
+        onActivated: { win.rangeMode = "7d"; win.refreshData(); }
+    }
+
+    Shortcut {
+        sequence: "3"
+        enabled: win.visible
+        onActivated: { win.rangeMode = "30d"; win.refreshData(); }
+    }
+
+    Shortcut {
+        sequence: "4"
+        enabled: win.visible
+        onActivated: { win.rangeMode = "all"; win.refreshData(); }
+    }
+
     Plasma5Support.DataSource {
         id: dbSource
 
@@ -1434,10 +1551,12 @@ Window {
         connectedSources: []
         onNewData: function(sourceName, data) {
             var stdout = data["stdout"] || "";
-            if (sourceName === win.datesCmd)
+            if (sourceName.indexOf("SELECT DISTINCT date") !== -1)
                 win.parseDates(stdout);
-            else if (sourceName === win.countsCmd)
+            else if (sourceName.indexOf("FROM key_counts") !== -1)
                 win.parseCounts(stdout);
+            else if (sourceName.indexOf("FROM daily_stats") !== -1)
+                win.parseMouse(stdout);
             disconnectSource(sourceName);
         }
     }
@@ -1535,7 +1654,7 @@ Window {
                         checked: win.rangeMode === modelData.id
                         onClicked: {
                             win.rangeMode = modelData.id;
-                            dbSource.connectSource(win.countsCmd);
+                            win.refreshData();
                         }
                     }
 
@@ -1555,7 +1674,7 @@ Window {
                         if (win.dateIndex > 0) {
                             win.dateIndex -= 1;
                             win.selectedDate = win.availableDates[win.dateIndex];
-                            dbSource.connectSource(win.countsCmd);
+                            win.refreshData();
                         }
                     }
                 }
@@ -1590,7 +1709,7 @@ Window {
                         if (win.dateIndex < win.availableDates.length - 1) {
                             win.dateIndex += 1;
                             win.selectedDate = win.availableDates[win.dateIndex];
-                            dbSource.connectSource(win.countsCmd);
+                            win.refreshData();
                         }
                     }
                 }
@@ -1930,6 +2049,65 @@ Window {
                     font.pixelSize: 10
                     font.bold: parent.enterCount > 0
                     opacity: 0.88
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 34
+            radius: 8
+            color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.04)
+            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1)
+            border.width: 1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 14
+
+                RowLayout {
+                    spacing: 5
+                    Kirigami.Icon {
+                        source: "input-mouse"
+                        Layout.preferredWidth: 15
+                        Layout.preferredHeight: 15
+                        opacity: 0.75
+                    }
+                    QQC2.Label {
+                        text: "Left: " + win.formatNumber(win.leftClicks)
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        font.bold: true
+                    }
+                }
+
+                QQC2.Label {
+                    text: "Middle: " + win.formatNumber(win.middleClicks)
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    font.bold: true
+                }
+
+                QQC2.Label {
+                    text: "Right: " + win.formatNumber(win.rightClicks)
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    font.bold: true
+                }
+
+                QQC2.Label {
+                    visible: win.sideClicks > 0
+                    text: "Side: " + win.formatNumber(win.sideClicks)
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    opacity: 0.85
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Label {
+                    text: "Mouse: " + win.mouseDistText + "  ·  Scroll: " + win.scrollDistText
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    font.bold: true
+                    opacity: 0.85
                 }
             }
         }

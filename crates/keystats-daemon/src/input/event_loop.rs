@@ -124,6 +124,121 @@ impl TouchpadState {
         self.physical_clicked = false;
         self.max_fingers = 0;
     }
+
+    fn on_touch(&mut self, pressed: bool) -> Option<&'static str> {
+if pressed {
+self.touching = true;
+self.touch_start = Some(std::time::Instant::now());
+self.moved = false;
+self.max_fingers = self.finger_count.max(1);
+None
+} else {
+let tap_role = if !self.physical_clicked
+&& let Some(start) = self.touch_start
+&& !self.moved
+&& start.elapsed() < Duration::from_millis(300)
+{
+Some(match self.max_fingers {
+2 => "right",
+3 => "middle",
+_ => "left",
+})
+} else {
+None
+};
+self.touching = false;
+self.reset_finger();
+tap_role
+}
+}
+
+fn on_tool_fingers(&mut self, fingers: u8, active: bool) {
+self.finger_count = if active { fingers } else { 0 };
+self.max_fingers = self.max_fingers.max(self.finger_count);
+}
+
+fn on_physical_left_click(&mut self) -> &'static str {
+if self.touching {
+self.physical_clicked = true;
+match self.max_fingers.max(self.finger_count) {
+2 => "right",
+3 => "middle",
+_ => "left",
+}
+} else {
+"left"
+}
+}
+
+/// Process a single EV_ABS event, returning `(cursor_dx, cursor_dy, scroll_delta)`.
+fn on_abs(&mut self, code: u16, value: i32) -> (f64, f64, f64) {
+match code {
+0x2f => {
+self.current_slot = value.max(0) as usize;
+(0.0, 0.0, 0.0)
+}
+0x39 => {
+if value < 0 && self.current_slot == 0 {
+self.last_x = None;
+self.last_y = None;
+}
+(0.0, 0.0, 0.0)
+}
+0x00 | 0x35 => {
+if code == 0x35 {
+self.has_mt = true;
+} else if self.has_mt {
+return (0.0, 0.0, 0.0);
+}
+if code == 0x00 || self.current_slot == 0 {
+let mut out = (0.0, 0.0, 0.0);
+if let Some(prev_x) = self.last_x {
+let scaled_dx = (value - prev_x) as f64 * 0.35;
+let sx = *self.start_x.get_or_insert(prev_x);
+if ((value - sx) as f64 * 0.35).abs() > 35.0 {
+self.moved = true;
+}
+if self.finger_count >= 2 {
+out.2 = scaled_dx.abs() * 0.25;
+} else {
+out.0 = scaled_dx;
+}
+}
+self.last_x = Some(value);
+out
+} else {
+(0.0, 0.0, 0.0)
+}
+}
+0x01 | 0x36 => {
+if code == 0x36 {
+self.has_mt = true;
+} else if self.has_mt {
+return (0.0, 0.0, 0.0);
+}
+if code == 0x01 || self.current_slot == 0 {
+let mut out = (0.0, 0.0, 0.0);
+if let Some(prev_y) = self.last_y {
+let scaled_dy = (value - prev_y) as f64 * 0.35;
+let sy = *self.start_y.get_or_insert(prev_y);
+if ((value - sy) as f64 * 0.35).abs() > 35.0 {
+self.moved = true;
+}
+if self.finger_count >= 2 {
+out.2 = scaled_dy.abs() * 0.25;
+} else {
+out.1 = scaled_dy;
+}
+}
+self.last_y = Some(value);
+out
+} else {
+(0.0, 0.0, 0.0)
+}
+}
+_ => (0.0, 0.0, 0.0),
+}
+}
 }
 
 /// Process a batch of events from one device, calling the appropriate
@@ -483,4 +598,81 @@ mod tests {
         assert_eq!(keymap::key_name(57), "Space");
         assert_eq!(keymap::button_role(0x110), Some("left"));
     }
+
+#[test]
+fn tap_one_finger_registers_left_click() {
+let mut tp = TouchpadState::default();
+tp.on_tool_fingers(1, true);
+assert_eq!(tp.on_touch(true), None);
+assert_eq!(tp.on_touch(false), Some("left"));
+assert!(!tp.touching);
+}
+
+#[test]
+fn tap_two_and_three_fingers_register_right_and_middle_clicks() {
+let mut tp = TouchpadState::default();
+tp.on_tool_fingers(2, true);
+assert_eq!(tp.on_touch(true), None);
+assert_eq!(tp.on_touch(false), Some("right"));
+
+tp.on_tool_fingers(3, true);
+assert_eq!(tp.on_touch(true), None);
+assert_eq!(tp.on_touch(false), Some("middle"));
+}
+
+#[test]
+fn cursor_drag_suppresses_tap_to_click() {
+let mut tp = TouchpadState::default();
+tp.on_tool_fingers(1, true);
+tp.on_touch(true);
+
+let (dx1, dy1, scroll1) = tp.on_abs(0x35, 100);
+assert_eq!((dx1, dy1, scroll1), (0.0, 0.0, 0.0));
+
+// Move 200 raw units * 0.35 = 70 px (> 35 px drag threshold)
+let (dx2, dy2, scroll2) = tp.on_abs(0x35, 300);
+assert!((dx2 - 70.0).abs() < 1e-6);
+assert_eq!((dy2, scroll2), (0.0, 0.0));
+assert!(tp.moved);
+
+// Lifting after drag must not emit a tap click
+assert_eq!(tp.on_touch(false), None);
+}
+
+#[test]
+fn multi_slot_isolation_and_scroll_scaling() {
+let mut tp = TouchpadState::default();
+tp.on_tool_fingers(2, true);
+tp.on_touch(true);
+
+// Slot 0 touches at Y = 500
+assert_eq!(tp.on_abs(0x2f, 0), (0.0, 0.0, 0.0));
+assert_eq!(tp.on_abs(0x36, 500), (0.0, 0.0, 0.0));
+
+// Slot 1 touches far away at Y = 1800 -> must NOT cause a jump
+assert_eq!(tp.on_abs(0x2f, 1), (0.0, 0.0, 0.0));
+assert_eq!(tp.on_abs(0x36, 1800), (0.0, 0.0, 0.0));
+
+// Legacy ABS_Y (0x01) must be ignored once ABS_MT_POSITION_Y (0x36) was seen
+assert_eq!(tp.on_abs(0x01, 1800), (0.0, 0.0, 0.0));
+
+// Slot 0 scrolls down by 100 raw units -> 100 * 0.35 * 0.25 = 8.75 scroll distance
+assert_eq!(tp.on_abs(0x2f, 0), (0.0, 0.0, 0.0));
+let (dx, dy, scroll) = tp.on_abs(0x36, 600);
+assert_eq!((dx, dy), (0.0, 0.0));
+assert!((scroll - 8.75).abs() < 1e-6);
+}
+
+#[test]
+fn physical_clickpad_multi_finger_suppresses_duplicate_tap() {
+let mut tp = TouchpadState::default();
+tp.on_tool_fingers(2, true);
+tp.on_touch(true);
+
+assert_eq!(tp.on_physical_left_click(), "right");
+assert!(tp.physical_clicked);
+
+// Releasing touch after physical ClickPad press must not trigger a second tap click
+assert_eq!(tp.on_touch(false), None);
+}
 }

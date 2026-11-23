@@ -12,6 +12,9 @@ PlasmoidItem {
     id: root
 
     // Live metric state
+    property string panelDisplayMode: Plasmoid.configuration.panelDisplayMode || "both"
+    property string distanceUnit: Plasmoid.configuration.distanceUnit || "metric"
+    property string customCtlPath: (Plasmoid.configuration.keystatsctlPath || "keystatsctl").trim()
     property string keyPresses: "0"
     property string totalClicks: "0"
     property string leftClicks: "0"
@@ -36,7 +39,7 @@ PlasmoidItem {
     property string historyTotalText: "0"
     // Top 15 keys (3 columns x 5 rows)
     property var topKeys: []
-    readonly property string ctlBin: "$(command -v keystatsctl || echo /usr/local/bin/keystatsctl)"
+    readonly property string ctlBin: (root.customCtlPath !== "" && root.customCtlPath !== "keystatsctl") ? root.customCtlPath : "$(command -v keystatsctl || echo /usr/local/bin/keystatsctl)"
     readonly property string dbPath: "$HOME/.local/state/keystats/stats.sqlite3"
     readonly property string statusCmd: "sh -c \"" + ctlBin + " status\""
     readonly property string stateDbPath: StandardPaths.writableLocation(StandardPaths.GenericStateLocation).toString().replace(/^file:\/\//, "") + "/keystats/stats.sqlite3"
@@ -82,9 +85,18 @@ PlasmoidItem {
 
     function formatDistance(px) {
         if (isNaN(px) || px <= 0)
-            return "0 m";
+            return root.distanceUnit === "pixels" ? "0 px" : (root.distanceUnit === "imperial" ? "0 ft" : "0 m");
+
+        if (root.distanceUnit === "pixels")
+            return formatNumber(px) + " px";
 
         var meters = px / pxPerMeter();
+        if (root.distanceUnit === "imperial") {
+            var feet = meters * 3.28084;
+            if (feet >= 5280)
+                return (feet / 5280).toFixed(2) + " mi";
+            return Math.round(feet) + " ft";
+        }
         if (meters >= 1000)
             return (meters / 1000).toFixed(2) + " km";
 
@@ -265,6 +277,7 @@ PlasmoidItem {
 
     HeatmapWindow {
         id: heatmapWin
+        distanceUnit: root.distanceUnit
     }
 
     Plasma5Support.DataSource {
@@ -323,12 +336,14 @@ PlasmoidItem {
             }
 
             PlasmaComponents.Label {
+                visible: root.panelDisplayMode !== "icon_only"
                 text: root.keyPresses
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                 font.bold: true
             }
 
             Kirigami.Icon {
+                visible: root.panelDisplayMode === "both"
                 source: "input-mouse"
                 Layout.preferredWidth: Kirigami.Units.iconSizes.small
                 Layout.preferredHeight: Kirigami.Units.iconSizes.small
@@ -336,6 +351,7 @@ PlasmoidItem {
             }
 
             PlasmaComponents.Label {
+                visible: root.panelDisplayMode === "both"
                 text: root.totalClicks
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                 font.bold: true
@@ -356,12 +372,13 @@ PlasmoidItem {
 
                 Kirigami.Icon {
                     source: "input-keyboard"
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
+                    Layout.preferredWidth: root.panelDisplayMode === "icon_only" ? 22 : 16
+                    Layout.preferredHeight: root.panelDisplayMode === "icon_only" ? 22 : 16
                     opacity: root.daemonConnected ? 1 : 0.45
                 }
 
                 PlasmaComponents.Label {
+                    visible: root.panelDisplayMode !== "icon_only"
                     text: root.keyPresses
                     font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.2
                     font.bold: true
@@ -371,6 +388,7 @@ PlasmoidItem {
             }
 
             RowLayout {
+                visible: root.panelDisplayMode === "both"
                 Layout.alignment: Qt.AlignHCenter
                 spacing: 4
 

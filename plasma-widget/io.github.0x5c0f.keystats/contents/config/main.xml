@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://kde.org"
+      xmlns:xsi="http://w3.org"
+      xsi:schemaLocation="http://kde.org
+      http://kde.org/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="panelDisplayMode" type="String">
+      <default>both</default>
+    </entry>
+    <entry name="distanceUnit" type="String">
+      <default>metric</default>
+    </entry>
+    <entry name="keystatsctlPath" type="String">
+      <default>keystatsctl</default>
+    </entry>
+  </group>
+</kcfg>
