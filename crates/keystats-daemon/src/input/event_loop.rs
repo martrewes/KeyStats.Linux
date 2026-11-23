@@ -100,6 +100,7 @@ impl ModifierState {
 struct TouchpadState {
     touching: bool,
     current_slot: usize,
+    has_mt: bool,
     finger_count: u8,
     max_fingers: u8,
     moved: bool,
@@ -322,7 +323,12 @@ fn process_device(
                         }
                     }
                     0x00 | 0x35 => {
-                        // ABS_X (0x00) or ABS_MT_POSITION_X (0x35): only track primary slot 0
+                        if code.0 == 0x35 {
+                            tp_state.has_mt = true;
+                        } else if tp_state.has_mt {
+                            continue;
+                        }
+                        // Only track primary slot 0
                         if code.0 == 0x00 || tp_state.current_slot == 0 {
                             if let Some(prev_x) = tp_state.last_x {
                                 let dx = (value - prev_x) as f64;
@@ -342,7 +348,12 @@ fn process_device(
                         }
                     }
                     0x01 | 0x36 => {
-                        // ABS_Y (0x01) or ABS_MT_POSITION_Y (0x36): only track primary slot 0
+                        if code.0 == 0x36 {
+                            tp_state.has_mt = true;
+                        } else if tp_state.has_mt {
+                            continue;
+                        }
+                        // Only track primary slot 0
                         if code.0 == 0x01 || tp_state.current_slot == 0 {
                             if let Some(prev_y) = tp_state.last_y {
                                 let dy = (value - prev_y) as f64;
