@@ -22,6 +22,8 @@ PlasmoidItem {
     property string middleClicks: "0"
     property string mouseDistance: "0 px"
     property string scrollDistance: "0 px"
+    property string wpmText: "0"
+    property string wpmPeak: "0"
     property string kpsText: "0"
     property string kpsPeak: "0"
     property string cpsText: "0"
@@ -174,6 +176,8 @@ PlasmoidItem {
         if (kpsMatch) {
             root.kpsText = kpsMatch[1];
             root.kpsPeak = kpsMatch[2];
+            root.wpmText = String(Math.round((parseFloat(kpsMatch[1]) || 0) * 12));
+            root.wpmPeak = String(Math.round((parseFloat(kpsMatch[2]) || 0) * 12));
         }
         if (cpsMatch) {
             root.cpsText = cpsMatch[1];
@@ -436,6 +440,22 @@ PlasmoidItem {
 
                 Item {
                     Layout.fillWidth: true
+                }
+
+                Rectangle {
+                    radius: 4
+                    color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
+                    implicitWidth: wpmLbl.implicitWidth + 12
+                    implicitHeight: wpmLbl.implicitHeight + 6
+
+                    PlasmaComponents.Label {
+                        id: wpmLbl
+                        anchors.centerIn: parent
+                        text: "WPM " + root.wpmText + " (" + root.wpmPeak + ")"
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
+                        font.bold: true
+                        color: Kirigami.Theme.highlightColor
+                    }
                 }
 
                 Rectangle {
