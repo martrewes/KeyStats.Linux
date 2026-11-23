@@ -333,7 +333,7 @@ fn process_device(
                                     tp_state.moved = true;
                                 }
                                 if tp_state.finger_count >= 2 {
-                                    stats.add_scroll_distance(scaled_dx * 0.2);
+                                    stats.add_scroll_distance(scaled_dx.abs() * 0.25);
                                 } else {
                                     pending_dx += scaled_dx;
                                 }
@@ -352,7 +352,7 @@ fn process_device(
                                     tp_state.moved = true;
                                 }
                                 if tp_state.finger_count >= 2 {
-                                    stats.add_scroll_distance(scaled_dy.abs() * 0.005);
+                                    stats.add_scroll_distance(scaled_dy.abs() * 0.25);
                                 } else {
                                     pending_dy += scaled_dy;
                                 }

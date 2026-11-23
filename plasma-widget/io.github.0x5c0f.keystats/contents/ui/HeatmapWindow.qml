@@ -39,6 +39,9 @@ Window {
         if (rangeMode === "30d")
             return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts WHERE date >= date('now', 'localtime', '-29 days') GROUP BY key_name;\"";
 
+        if (rangeMode === "all")
+            return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts GROUP BY key_name;\"";
+
         var d = selectedDate !== "" ? selectedDate : "now";
         var whereClause = (d === "now") ? "date = date('now', 'localtime')" : ("date = '" + d + "'");
         return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT key_name, SUM(count) FROM key_counts WHERE " + whereClause + " GROUP BY key_name;\"";
@@ -1415,6 +1418,8 @@ Window {
     height: 495
     minimumWidth: 820
     minimumHeight: 450
+    Kirigami.Theme.colorSet: Kirigami.Theme.Window
+    Kirigami.Theme.inherit: false
     color: Kirigami.Theme.backgroundColor
     onVisibleChanged: {
         if (visible)
@@ -1455,7 +1460,7 @@ Window {
                 }
 
                 QQC2.Label {
-                    text: "Virtual keyboard view for daily, 7-day, and 30-day key intensity."
+                    text: "Virtual keyboard view for daily, 7-day, 30-day, and all-time key intensity."
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     opacity: 0.68
                 }
@@ -1519,6 +1524,9 @@ Window {
                     }, {
                         "id": "30d",
                         "label": "30D"
+                    }, {
+                        "id": "all",
+                        "label": "All"
                     }]
 
                     delegate: QQC2.Button {
@@ -1595,8 +1603,8 @@ Window {
 
             QQC2.Label {
                 text: "Total " + win.formatNumber(win.totalKeys) + " keys · " + win.activeKeys + " active keys"
-                font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.05
-                opacity: 0.75
+                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.00
+                opacity: 1
             }
 
         }
@@ -1666,7 +1674,7 @@ Window {
                                     anchors.bottomMargin: kInfo.isoEnterTop ? -(kbFrame.gap + 2) : 0
                                     z: keyCell.isIsoHalf ? 2 : 1
                                     radius: 6
-                                    color: keyCell.keyCount > 0 ? Qt.rgba(0.32, 0.72, 0.34, 0.22 + 0.68 * keyCell.intensity) : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.06)
+                                    color: keyCell.keyCount > 0 ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22 + 0.68 * keyCell.intensity) : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.06)
                                     border.color: keyHover.containsMouse ? Kirigami.Theme.highlightColor : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.14)
                                     border.width: keyHover.containsMouse ? 1.5 : 1
 
@@ -1677,7 +1685,7 @@ Window {
                                         radius: height / 2
                                         width: Math.max(17, badgeText.implicitWidth + 7)
                                         height: 16
-                                        color: Qt.rgba(0.18, 0.45, 0.2, 0.85)
+                                        color: Qt.darker(Kirigami.Theme.highlightColor, 1.45)
 
                                         QQC2.Label {
                                             id: badgeText
@@ -1753,7 +1761,7 @@ Window {
                                             width: parent.width
                                             height: (parent.height - 3) / 2
                                             radius: 4
-                                            color: arrowCnt > 0 ? Qt.rgba(0.32, 0.72, 0.34, 0.22 + 0.68 * arrowInt) : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.06)
+                                            color: arrowCnt > 0 ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22 + 0.68 * arrowInt) : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.06)
                                             border.color: arrowHover.containsMouse ? Kirigami.Theme.highlightColor : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.14)
                                             border.width: 1
 
@@ -1768,7 +1776,7 @@ Window {
                                                     radius: 6
                                                     width: Math.max(14, arrowBadge.implicitWidth + 5)
                                                     height: 12
-                                                    color: Qt.rgba(0.18, 0.45, 0.2, 0.85)
+                                                    color: Qt.darker(Kirigami.Theme.highlightColor, 1.45)
 
                                                     QQC2.Label {
                                                         id: arrowBadge
@@ -1834,6 +1842,10 @@ Window {
                 onEnterCountChanged: isoCanvas.requestPaint()
                 onEnterIntensityChanged: isoCanvas.requestPaint()
                 onHoveredChanged: isoCanvas.requestPaint()
+                Connections {
+                    target: Kirigami.Theme
+                    function onHighlightColorChanged() { isoCanvas.requestPaint() }
+                }
 
                 property real topW: 1.5 * kbFrame.unitW + 0.5 * kbFrame.gap
                 property real botW: 1.25 * kbFrame.unitW + 0.25 * kbFrame.gap
@@ -1880,7 +1892,7 @@ Window {
                         ctx.closePath()
 
                         ctx.fillStyle = parent.enterCount > 0
-                            ? Qt.rgba(0.32, 0.72, 0.34, 0.22 + 0.68 * parent.enterIntensity)
+                            ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22 + 0.68 * parent.enterIntensity)
                             : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.06)
                         ctx.fill()
 
@@ -1899,7 +1911,7 @@ Window {
                     radius: height / 2
                     width: Math.max(17, isoBadgeText.implicitWidth + 7)
                     height: 16
-                    color: Qt.rgba(0.18, 0.45, 0.2, 0.85)
+                    color: Qt.darker(Kirigami.Theme.highlightColor, 1.45)
 
                     QQC2.Label {
                         id: isoBadgeText

@@ -513,17 +513,107 @@ PlasmoidItem {
 
             }
 
-            // 2x2 Stat Cards Grid (Left Clicks, Right Clicks, Mouse Distance, Scroll Distance)
-            GridLayout {
+            // 3-Column Clicks Row: Left | Middle | Right
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 2
-                rowSpacing: Kirigami.Units.smallSpacing
-                columnSpacing: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
 
-                // Card 1: Left Clicks
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 56
+                    Layout.preferredHeight: 48
+                    radius: Kirigami.Units.smallSpacing
+                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.mediumSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+                        anchors.topMargin: 5
+                        anchors.bottomMargin: 5
+                        spacing: 1
+
+                        PlasmaComponents.Label {
+                            text: "Left Clicks"
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
+                            opacity: 0.7
+                        }
+                        PlasmaComponents.Label {
+                            text: root.leftClicks
+                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
+                            font.bold: true
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    radius: Kirigami.Units.smallSpacing
+                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.mediumSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+                        anchors.topMargin: 5
+                        anchors.bottomMargin: 5
+                        spacing: 1
+
+                        PlasmaComponents.Label {
+                            text: "Middle Clicks"
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
+                            opacity: 0.7
+                        }
+                        PlasmaComponents.Label {
+                            text: root.middleClicks
+                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
+                            font.bold: true
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    radius: Kirigami.Units.smallSpacing
+                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.mediumSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+                        anchors.topMargin: 5
+                        anchors.bottomMargin: 5
+                        spacing: 1
+
+                        PlasmaComponents.Label {
+                            text: "Right Clicks"
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
+                            opacity: 0.7
+                        }
+                        PlasmaComponents.Label {
+                            text: root.rightClicks
+                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
+                            font.bold: true
+                        }
+                    }
+                }
+            }
+
+            // 2-Column Distance Row: Mouse Distance | Scroll Distance
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
                     radius: Kirigami.Units.smallSpacing
                     color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
                     border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
@@ -535,49 +625,22 @@ PlasmoidItem {
                         spacing: Kirigami.Units.mediumSpacing
 
                         Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 6
+                            width: 28; height: 28; radius: 6
                             color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                source: "input-mouse"
-                                width: 16
-                                height: 16
-                            }
-
+                            Kirigami.Icon { anchors.centerIn: parent; source: "transform-move"; width: 16; height: 16 }
                         }
-
                         ColumnLayout {
                             spacing: 1
-
-                            PlasmaComponents.Label {
-                                text: "Left Clicks"
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
-                                opacity: 0.7
-                            }
-
-                            PlasmaComponents.Label {
-                                text: root.leftClicks
-                                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
-                                font.bold: true
-                            }
-
+                            PlasmaComponents.Label { text: "Mouse Distance"; font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88; opacity: 0.7 }
+                            PlasmaComponents.Label { text: root.mouseDistance; font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15; font.bold: true }
                         }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
+                        Item { Layout.fillWidth: true }
                     }
-
                 }
 
-                // Card 2: Right Clicks (+ Middle badge if > 0)
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 56
+                    Layout.preferredHeight: 48
                     radius: Kirigami.Units.smallSpacing
                     color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
                     border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
@@ -589,153 +652,18 @@ PlasmoidItem {
                         spacing: Kirigami.Units.mediumSpacing
 
                         Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 6
+                            width: 28; height: 28; radius: 6
                             color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                source: "input-mouse"
-                                width: 16
-                                height: 16
-                            }
-
+                            Kirigami.Icon { anchors.centerIn: parent; source: "go-up"; width: 16; height: 16 }
                         }
-
                         ColumnLayout {
                             spacing: 1
-
-                            PlasmaComponents.Label {
-                                text: root.middleClicks !== "0" ? ("Right Clicks / Middle Clicks") : "Right Clicks"
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
-                                opacity: 0.7
-                            }
-
-                            PlasmaComponents.Label {
-                                text: root.middleClicks !== "0" ? (root.rightClicks + " / " + root.middleClicks) : root.rightClicks
-                                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
-                                font.bold: true
-                            }
-
+                            PlasmaComponents.Label { text: "Scroll Distance"; font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88; opacity: 0.7 }
+                            PlasmaComponents.Label { text: root.scrollDistance; font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15; font.bold: true }
                         }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
+                        Item { Layout.fillWidth: true }
                     }
-
                 }
-
-                // Card 3: Mouse Distance
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 56
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: Kirigami.Units.mediumSpacing
-                        spacing: Kirigami.Units.mediumSpacing
-
-                        Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 6
-                            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                source: "transform-move"
-                                width: 16
-                                height: 16
-                            }
-
-                        }
-
-                        ColumnLayout {
-                            spacing: 1
-
-                            PlasmaComponents.Label {
-                                text: "Mouse Distance"
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
-                                opacity: 0.7
-                            }
-
-                            PlasmaComponents.Label {
-                                text: root.mouseDistance
-                                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
-                                font.bold: true
-                            }
-
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                    }
-
-                }
-
-                // Card 4: Scroll Distance
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 56
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: Kirigami.Units.mediumSpacing
-                        spacing: Kirigami.Units.mediumSpacing
-
-                        Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 6
-                            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                source: "go-up"
-                                width: 16
-                                height: 16
-                            }
-
-                        }
-
-                        ColumnLayout {
-                            spacing: 1
-
-                            PlasmaComponents.Label {
-                                text: "Scroll Distance"
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
-                                opacity: 0.7
-                            }
-
-                            PlasmaComponents.Label {
-                                text: root.scrollDistance
-                                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
-                                font.bold: true
-                            }
-
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                    }
-
-                }
-
             }
 
             // Key Breakdown Section (15 keys in 3-column x 5-row grid)
