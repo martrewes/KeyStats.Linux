@@ -42,14 +42,15 @@ PlasmoidItem {
     property var historyData: [0, 0, 0, 0, 0, 0, 0]
     property var dayLabels: ["-", "-", "-", "-", "-", "-", "Today"]
     property string historyTotalText: "0"
+    property int pollTick: 0
     // Top 15 keys (3 columns x 5 rows)
     property var topKeys: []
-    readonly property string ctlBin: (root.customCtlPath !== "" && root.customCtlPath !== "keystatsctl") ? root.customCtlPath : "$(command -v keystatsctl || echo /usr/local/bin/keystatsctl)"
-    readonly property string dbPath: "$HOME/.local/state/keystats/stats.sqlite3"
-    readonly property string statusCmd: "sh -c \"" + ctlBin + " status\""
+    // Avoid spawning /bin/sh when default binary name is used
+    readonly property bool useCustomPath: root.customCtlPath !== "" && root.customCtlPath !== "keystatsctl"
+    readonly property string statusCmd: useCustomPath ? ("sh -c \"" + root.customCtlPath + " status\"") : "keystatsctl status"
+    readonly property string keysCmd: useCustomPath ? ("sh -c \"" + root.customCtlPath + " keys --limit 15\"") : "keystatsctl keys --limit 15"
     readonly property string stateDbPath: "$HOME/.local/state/keystats/stats.sqlite3"
-    readonly property string clickBreakdownCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT left_clicks, right_clicks, middle_clicks FROM daily_stats WHERE date = date(\x27now\x27, \x27localtime\x27) LIMIT 1;\""
-    readonly property string keysCmd: "sh -c \"" + ctlBin + " keys --limit 15\""
+    readonly property string clickBreakdownCmd: "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT left_clicks, right_clicks, middle_clicks FROM daily_stats WHERE date = date('now', 'localtime') LIMIT 1;\""
     readonly property string historyCmd: {
         var expr = "key_presses";
         if (historyMode === "clicks")
@@ -59,7 +60,7 @@ PlasmoidItem {
         else if (historyMode === "scroll")
             expr = "CAST(ROUND(scroll_distance) AS INTEGER)";
         var offset = "-" + (historyDays - 1) + " days";
-        return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT strftime(\x27%m-%d\x27, date), " + expr + " FROM daily_stats WHERE date >= date(\x27now\x27, \x27localtime\x27, \x27" + offset + "\x27) ORDER BY date ASC;\"";
+        return "sqlite3 file:" + stateDbPath + "?mode=ro \"SELECT strftime('%m-%d', date), " + expr + " FROM daily_stats WHERE date >= date('now', 'localtime', '" + offset + "') ORDER BY date ASC;\"";
     }
 
     function formatNumber(n) {
@@ -67,21 +68,6 @@ PlasmoidItem {
             return "0";
 
         return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    }
-
-    function formatCompact(n) {
-        if (isNaN(n) || n <= 0)
-            return "0";
-
-        if (n >= 1e+06) {
-            var m = n / 1e+06;
-            return (m >= 10 ? m.toFixed(0) : m.toFixed(1)) + "M";
-        }
-        if (n >= 1000) {
-            var k = n / 1000;
-            return (k >= 100 ? k.toFixed(0) : k.toFixed(1)) + "k";
-        }
-        return Math.round(n).toString();
     }
 
     function pxPerMeter() {
@@ -100,6 +86,7 @@ PlasmoidItem {
             var feet = meters * 3.28084;
             if (feet >= 5280)
                 return (feet / 5280).toFixed(2) + " mi";
+
             return Math.round(feet) + " ft";
         }
         if (meters >= 1000)
@@ -135,22 +122,6 @@ PlasmoidItem {
             return name.slice(0, 7) + "...";
 
         return name;
-    }
-
-    function parseCompactCount(str) {
-        var m = str.match(/^([\d.]+)\s*([KkMm])?$/);
-        if (!m)
-            return 0;
-
-        var num = parseFloat(m[1]);
-        var suffix = (m[2] || "").toUpperCase();
-        if (suffix === "K")
-            return Math.round(num * 1000);
-
-        if (suffix === "M")
-            return Math.round(num * 1e+06);
-
-        return Math.round(num);
     }
 
     function parseStatus(output) {
@@ -213,8 +184,7 @@ PlasmoidItem {
     }
 
     function parseHistory(output) {
-        var lines = output.split("
-");
+        var lines = output.split("\n");
         var counts = [];
         var labels = [];
         var isDistMode = (root.historyMode === "distance" || root.historyMode === "scroll");
@@ -252,10 +222,10 @@ PlasmoidItem {
             var m = lines[i].match(/^(\S+)\s+.*?([\d.]+[KkMm]?)\s*$/);
             if (m && m[1] !== "Key")
                 items.push({
-                "keyName": shortKeyLabel(m[1]),
-                "fullName": m[1],
-                "count": m[2]
-            });
+                    "keyName": shortKeyLabel(m[1]),
+                    "fullName": m[1],
+                    "count": m[2]
+                });
 
             if (items.length >= 15)
                 break;
@@ -264,19 +234,24 @@ PlasmoidItem {
         root.topKeys = items;
     }
 
-    function refreshAll() {
+    function refreshAll(forceHistory) {
         execSource.connectSource(statusCmd);
         if (root.expanded) {
             execSource.connectSource(clickBreakdownCmd);
-            execSource.connectSource(historyCmd);
             execSource.connectSource(keysCmd);
+            // Throttle SQLite history queries to once every 40 ticks (~60s) unless forced
+            if (forceHistory || (root.pollTick % 40 === 0))
+                execSource.connectSource(historyCmd);
+
+            root.pollTick++;
         }
     }
 
     onExpandedChanged: {
-        if (expanded)
-            refreshAll();
-
+        if (expanded) {
+            root.pollTick = 0;
+            refreshAll(true);
+        }
     }
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
     toolTipMainText: "KeyStats"
@@ -295,6 +270,7 @@ PlasmoidItem {
 
     HeatmapWindow {
         id: heatmapWin
+
         distanceUnit: root.distanceUnit
     }
 
@@ -324,10 +300,70 @@ PlasmoidItem {
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refreshAll()
+        onTriggered: root.refreshAll(false)
     }
+    // Reusable inline card component to reduce QML node duplication
 
-    // Compact Panel Indicator (Adaptive: stacks on thick panels, inline on thin panels)
+    component StatCard: Rectangle {
+        property string title: ""
+        property string value: ""
+        property string iconName: ""
+        property real valueScale: 1.12
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: 48
+        radius: Kirigami.Units.smallSpacing
+        color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
+        border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
+        border.width: 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Kirigami.Units.mediumSpacing
+            anchors.rightMargin: Kirigami.Units.smallSpacing
+            anchors.topMargin: 5
+            anchors.bottomMargin: 5
+            spacing: Kirigami.Units.mediumSpacing
+
+            Rectangle {
+                visible: iconName !== ""
+                width: 28
+                height: 28
+                radius: 6
+                color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
+
+                Kirigami.Icon {
+                    anchors.centerIn: parent
+                    source: iconName
+                    width: 16
+                    height: 16
+                }
+
+            }
+
+            ColumnLayout {
+                spacing: 1
+                Layout.fillWidth: true
+
+                PlasmaComponents.Label {
+                    text: title
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.86
+                    opacity: 0.7
+                }
+
+                PlasmaComponents.Label {
+                    text: value
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * valueScale
+                    font.bold: true
+                }
+
+            }
+
+        }
+
+    }
+    // Compact Panel Indicator
+
     compactRepresentation: MouseArea {
         id: compactRoot
 
@@ -429,8 +465,8 @@ PlasmoidItem {
         }
 
     }
+    // Full Popup Dashboard
 
-    // Full Popup Dashboard (Windows KeyStats-inspired layout)
     fullRepresentation: Item {
         Layout.minimumWidth: 360
         Layout.minimumHeight: 600
@@ -464,12 +500,14 @@ PlasmoidItem {
 
                     PlasmaComponents.Label {
                         id: wpmLbl
+
                         anchors.centerIn: parent
                         text: "WPM " + root.wpmText + " (" + root.wpmPeak + ")"
                         font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88
                         font.bold: true
                         color: Kirigami.Theme.highlightColor
                     }
+
                 }
 
                 Rectangle {
@@ -511,214 +549,58 @@ PlasmoidItem {
             }
 
             // Full-Width Keystrokes Hero Card
-            Rectangle {
-                Layout.fillWidth: true
+            StatCard {
                 Layout.preferredHeight: 58
-                radius: Kirigami.Units.smallSpacing
-                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                border.width: 1
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Kirigami.Units.largeSpacing
-                    anchors.rightMargin: Kirigami.Units.largeSpacing
-                    spacing: Kirigami.Units.largeSpacing
-
-                    Rectangle {
-                        width: 32
-                        height: 32
-                        radius: 6
-                        color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-
-                        Kirigami.Icon {
-                            anchors.centerIn: parent
-                            source: "input-keyboard"
-                            width: 18
-                            height: 18
-                        }
-
-                    }
-
-                    ColumnLayout {
-                        spacing: 1
-
-                        PlasmaComponents.Label {
-                            text: "Keystrokes"
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.9
-                            opacity: 0.7
-                        }
-
-                        PlasmaComponents.Label {
-                            text: root.keyPresses
-                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.35
-                            font.bold: true
-                        }
-
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-
-                }
-
+                title: "Keystrokes"
+                value: root.keyPresses
+                iconName: "input-keyboard"
+                valueScale: 1.35
             }
 
-            // 3-Column Clicks Row: Left | Middle | Right
+            // 3-Column Clicks Row
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Kirigami.Units.mediumSpacing
-                        anchors.rightMargin: Kirigami.Units.smallSpacing
-                        anchors.topMargin: 5
-                        anchors.bottomMargin: 5
-                        spacing: 1
-
-                        PlasmaComponents.Label {
-                            text: "Left Clicks"
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                            opacity: 0.7
-                        }
-                        PlasmaComponents.Label {
-                            text: root.leftClicks
-                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
-                            font.bold: true
-                        }
-                    }
+                StatCard {
+                    title: "Left Clicks"
+                    value: root.leftClicks
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Kirigami.Units.mediumSpacing
-                        anchors.rightMargin: Kirigami.Units.smallSpacing
-                        anchors.topMargin: 5
-                        anchors.bottomMargin: 5
-                        spacing: 1
-
-                        PlasmaComponents.Label {
-                            text: "Middle Clicks"
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                            opacity: 0.7
-                        }
-                        PlasmaComponents.Label {
-                            text: root.middleClicks
-                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
-                            font.bold: true
-                        }
-                    }
+                StatCard {
+                    title: "Middle Clicks"
+                    value: root.middleClicks
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Kirigami.Units.mediumSpacing
-                        anchors.rightMargin: Kirigami.Units.smallSpacing
-                        anchors.topMargin: 5
-                        anchors.bottomMargin: 5
-                        spacing: 1
-
-                        PlasmaComponents.Label {
-                            text: "Right Clicks"
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                            opacity: 0.7
-                        }
-                        PlasmaComponents.Label {
-                            text: root.rightClicks
-                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.12
-                            font.bold: true
-                        }
-                    }
+                StatCard {
+                    title: "Right Clicks"
+                    value: root.rightClicks
                 }
+
             }
 
-            // 2-Column Distance Row: Mouse Distance | Scroll Distance
+            // 2-Column Distance Row
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: Kirigami.Units.mediumSpacing
-                        spacing: Kirigami.Units.mediumSpacing
-
-                        Rectangle {
-                            width: 28; height: 28; radius: 6
-                            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-                            Kirigami.Icon { anchors.centerIn: parent; source: "transform-move"; width: 16; height: 16 }
-                        }
-                        ColumnLayout {
-                            spacing: 1
-                            PlasmaComponents.Label { text: "Mouse Distance"; font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88; opacity: 0.7 }
-                            PlasmaComponents.Label { text: root.mouseDistance; font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15; font.bold: true }
-                        }
-                        Item { Layout.fillWidth: true }
-                    }
+                StatCard {
+                    title: "Mouse Distance"
+                    value: root.mouseDistance
+                    iconName: "transform-move"
+                    valueScale: 1.15
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05)
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: Kirigami.Units.mediumSpacing
-                        spacing: Kirigami.Units.mediumSpacing
-
-                        Rectangle {
-                            width: 28; height: 28; radius: 6
-                            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.12)
-                            Kirigami.Icon { anchors.centerIn: parent; source: "go-up"; width: 16; height: 16 }
-                        }
-                        ColumnLayout {
-                            spacing: 1
-                            PlasmaComponents.Label { text: "Scroll Distance"; font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.88; opacity: 0.7 }
-                            PlasmaComponents.Label { text: root.scrollDistance; font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15; font.bold: true }
-                        }
-                        Item { Layout.fillWidth: true }
-                    }
+                StatCard {
+                    title: "Scroll Distance"
+                    value: root.scrollDistance
+                    iconName: "go-up"
+                    valueScale: 1.15
                 }
+
             }
 
-            // Key Breakdown Section (15 keys in 3-column x 5-row grid)
+            // Key Breakdown Section
             PlasmaComponents.Label {
                 text: "Key Breakdown"
                 font.bold: true
@@ -789,7 +671,7 @@ PlasmoidItem {
                 }
 
             }
-            // History Header (Title + Line / Bar toggle)
+            // History Header
 
             RowLayout {
                 Layout.fillWidth: true
@@ -812,26 +694,20 @@ PlasmoidItem {
                         text: "Line"
                         checked: root.chartStyle === "line"
                         font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                        onClicked: {
-                            root.chartStyle = "line";
-                            historyCanvas.requestPaint();
-                        }
+                        onClicked: root.chartStyle = "line"
                     }
 
                     PlasmaComponents.ToolButton {
                         text: "Bar"
                         checked: root.chartStyle === "bar"
                         font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                        onClicked: {
-                            root.chartStyle = "bar";
-                            historyCanvas.requestPaint();
-                        }
+                        onClicked: root.chartStyle = "bar"
                     }
 
                 }
 
             }
-            // History Card (7D/30D + Keys/Clicks/Distance/Scroll + Canvas + Total)
+            // History Card
 
             Rectangle {
                 id: historyBox
@@ -839,6 +715,7 @@ PlasmoidItem {
                 property int padLeft: 36
                 property int padRight: 10
                 property int hoveredIndex: -1
+                property var computedPts: []
 
                 function niceMax(rawMax) {
                     if (rawMax <= 10)
@@ -891,15 +768,13 @@ PlasmoidItem {
                 border.width: 1
 
                 ColumnLayout {
-                    // Sparse X-axis date ticks (avoids crowding in 30D view)
-
                     id: chartCol
 
                     anchors.fill: parent
                     anchors.margins: Kirigami.Units.mediumSpacing
                     spacing: 4
 
-                    // Filter Bar: 7D | 30D   and   Keys | Clicks | Distance | Scroll
+                    // Filter Bar
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -963,25 +838,29 @@ PlasmoidItem {
                     Canvas {
                         id: historyCanvas
 
-                        property var pointsData: root.historyData
-                        property int activeIdx: historyBox.hoveredIndex
-                        property string styleMode: root.chartStyle
+                        // Cached theme colors to avoid recalculating inside loops
+                        readonly property color gridColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.09)
+                        readonly property color labelColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.65)
+                        readonly property color barMutedColor: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.45)
+                        readonly property color gradTopColor: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.28)
+                        readonly property color gradBottomColor: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0)
+
+                        function schedulePaint() {
+                            Qt.callLater(historyCanvas.requestPaint);
+                        }
 
                         function traceSmoothLine(ctx, pts, minY, maxY, tension) {
                             var t = (tension !== undefined) ? tension : 0.22;
-                            ctx.moveTo(pts.x, pts.y);
+                            ctx.moveTo(pts[0].x, pts[0].y);
                             for (var i = 0; i < pts.length - 1; i++) {
-                                var p0 = (i > 0) ? pts[i - 1] : pts;
+                                var p0 = (i > 0) ? pts[i - 1] : pts[0];
                                 var p1 = pts[i];
                                 var p2 = pts[i + 1];
                                 var p3 = (i + 2 < pts.length) ? pts[i + 2] : p2;
                                 var cp1x = p1.x + (p2.x - p0.x) * t;
-                                var cp1y = p1.y + (p2.y - p0.y) * t;
+                                var cp1y = Math.max(minY, Math.min(maxY, p1.y + (p2.y - p0.y) * t));
                                 var cp2x = p2.x - (p3.x - p1.x) * t;
-                                var cp2y = p2.y - (p3.y - p1.y) * t;
-                                // Clamp Y so curves never dip below 0 or overshoot the top gridline
-                                cp1y = Math.max(minY, Math.min(maxY, cp1y));
-                                cp2y = Math.max(minY, Math.min(maxY, cp2y));
+                                var cp2y = Math.max(minY, Math.min(maxY, p2.y - (p3.y - p1.y) * t));
                                 ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
                             }
                         }
@@ -989,11 +868,8 @@ PlasmoidItem {
                         antialiasing: true
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        onPointsDataChanged: requestPaint()
-                        onActiveIdxChanged: requestPaint()
-                        onStyleModeChanged: requestPaint()
-                        onWidthChanged: requestPaint()
-                        onHeightChanged: requestPaint()
+                        onWidthChanged: schedulePaint()
+                        onHeightChanged: schedulePaint()
                         onPaint: {
                             var ctx = getContext("2d");
                             ctx.clearRect(0, 0, width, height);
@@ -1002,7 +878,12 @@ PlasmoidItem {
                             if (n < 2)
                                 return ;
 
-                            var rawMax = Math.max.apply(null, data) || 0;
+                            var rawMax = 0;
+                            for (var m = 0; m < n; m++) {
+                                if ((data[m] || 0) > rawMax)
+                                    rawMax = data[m];
+
+                            }
                             var maxVal = historyBox.niceMax(rawMax);
                             var padLeft = historyBox.padLeft;
                             var padRight = historyBox.padRight;
@@ -1014,16 +895,16 @@ PlasmoidItem {
                             ctx.font = "10px sans-serif";
                             ctx.textAlign = "right";
                             ctx.textBaseline = "middle";
+                            ctx.strokeStyle = gridColor;
+                            ctx.fillStyle = labelColor;
+                            ctx.lineWidth = 1;
                             for (var g = 0; g <= 2; g++) {
                                 var gy = padTop + (plotH * g / 2);
                                 var tickVal = maxVal * (1 - g / 2);
-                                ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.09);
-                                ctx.lineWidth = 1;
                                 ctx.beginPath();
                                 ctx.moveTo(padLeft, gy);
                                 ctx.lineTo(width - padRight, gy);
                                 ctx.stroke();
-                                ctx.fillStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.65);
                                 ctx.fillText(historyBox.formatAxisVal(tickVal), padLeft - 6, gy);
                             }
                             var pts = [];
@@ -1033,31 +914,31 @@ PlasmoidItem {
                                 pts.push({
                                     "x": padLeft + stepX * i,
                                     "y": padTop + plotH * (1 - ratio),
-                                    "h": Math.max(2, plotH * ratio)
+                                    "h": val > 0 ? Math.max(2, plotH * ratio) : 0
                                 });
                             }
+                            historyBox.computedPts = pts;
                             if (root.chartStyle === "bar") {
                                 var barW = Math.max(3, Math.min(18, (plotW / n) * 0.62));
                                 for (var b = 0; b < n; b++) {
-                                    var isTodayB = (b === n - 1);
-                                    var isHoveredB = (b === historyBox.hoveredIndex);
-                                    ctx.fillStyle = (isTodayB || isHoveredB) ? Kirigami.Theme.highlightColor : Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.45);
+                                    if (pts[b].h <= 0)
+                                        continue;
+
+                                    ctx.fillStyle = (b === n - 1) ? Kirigami.Theme.highlightColor : barMutedColor;
                                     ctx.fillRect(pts[b].x - barW / 2, padTop + plotH - pts[b].h, barW, pts[b].h);
                                 }
                             } else {
                                 var grad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
-                                grad.addColorStop(0, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.28));
-                                grad.addColorStop(1, Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0));
-                                // 1. Gradient Fill under the smooth curve
+                                grad.addColorStop(0, gradTopColor);
+                                grad.addColorStop(1, gradBottomColor);
                                 ctx.beginPath();
-                                ctx.moveTo(pts.x, padTop + plotH);
-                                ctx.lineTo(pts.x, pts.y);
+                                ctx.moveTo(pts[0].x, padTop + plotH);
+                                ctx.lineTo(pts[0].x, pts[0].y);
                                 traceSmoothLine(ctx, pts, padTop, padTop + plotH, 0.22);
                                 ctx.lineTo(pts[n - 1].x, padTop + plotH);
                                 ctx.closePath();
                                 ctx.fillStyle = grad;
                                 ctx.fill();
-                                // 2. Smooth Line Stroke
                                 ctx.beginPath();
                                 traceSmoothLine(ctx, pts, padTop, padTop + plotH, 0.22);
                                 ctx.strokeStyle = Kirigami.Theme.highlightColor;
@@ -1065,36 +946,65 @@ PlasmoidItem {
                                 ctx.lineJoin = "round";
                                 ctx.lineCap = "round";
                                 ctx.stroke();
-                                // 3. Hover Guideline
-                                if (historyBox.hoveredIndex >= 0 && historyBox.hoveredIndex < n) {
-                                    var hx = pts[historyBox.hoveredIndex].x;
-                                    ctx.strokeStyle = Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.28);
-                                    ctx.lineWidth = 1;
-                                    ctx.beginPath();
-                                    ctx.moveTo(hx, padTop);
-                                    ctx.lineTo(hx, padTop + plotH);
-                                    ctx.stroke();
-                                }
-                                // 4. Data Point Dots
                                 for (var d = 0; d < n; d++) {
                                     var isToday = (d === n - 1);
-                                    var isHovered = (d === historyBox.hoveredIndex);
-                                    if (n <= 10 || isToday || isHovered || (data[d] || 0) > 0) {
-                                        if (isHovered) {
-                                            ctx.beginPath();
-                                            ctx.arc(pts[d].x, pts[d].y, 6.5, 0, Math.PI * 2);
-                                            ctx.fillStyle = Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25);
-                                            ctx.fill();
-                                        }
+                                    if (n <= 10 || isToday || (data[d] || 0) > 0) {
                                         ctx.beginPath();
-                                        ctx.arc(pts[d].x, pts[d].y, isHovered ? 4.5 : (isToday ? 3.8 : 2.3), 0, Math.PI * 2);
-                                        ctx.fillStyle = (isToday || isHovered) ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor;
+                                        ctx.arc(pts[d].x, pts[d].y, isToday ? 3.8 : 2.3, 0, Math.PI * 2);
+                                        ctx.fillStyle = isToday ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor;
                                         ctx.fill();
                                     }
                                 }
                             }
                         }
+
+                        Connections {
+                            function onHistoryDataChanged() {
+                                historyCanvas.schedulePaint();
+                            }
+
+                            function onChartStyleChanged() {
+                                historyCanvas.schedulePaint();
+                            }
+
+                            target: root
+                        }
+
+                        // Pure QML Hover Guideline & Active Dot (Zero Canvas Repaints on Mouse Move)
+                        Rectangle {
+                            id: hoverGuideline
+
+                            readonly property var activePt: (historyBox.hoveredIndex >= 0 && historyBox.hoveredIndex < historyBox.computedPts.length) ? historyBox.computedPts[historyBox.hoveredIndex] : null
+
+                            visible: activePt !== null && root.chartStyle === "line"
+                            x: activePt ? Math.round(activePt.x) : 0
+                            y: 8
+                            width: 1
+                            height: Math.max(0, historyCanvas.height - 14)
+                            color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.28)
+                        }
+
+                        Rectangle {
+                            visible: hoverGuideline.visible
+                            width: 13
+                            height: 13
+                            radius: 6.5
+                            x: hoverGuideline.activePt ? (hoverGuideline.activePt.x - width / 2) : 0
+                            y: hoverGuideline.activePt ? (hoverGuideline.activePt.y - height / 2) : 0
+                            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 9
+                                height: 9
+                                radius: 4.5
+                                color: Kirigami.Theme.highlightColor
+                            }
+
+                        }
+
                     }
+                    // Sparse X-axis date ticks
 
                     Item {
                         Layout.fillWidth: true
@@ -1120,7 +1030,6 @@ PlasmoidItem {
                         }
 
                     }
-                    // Footer Total Summary (matches Windows "Total: 13.2k" footer)
 
                     PlasmaComponents.Label {
                         text: "Total (" + root.historyDays + "d): " + root.historyTotalText
